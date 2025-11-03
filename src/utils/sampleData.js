@@ -75,31 +75,35 @@ export const sampleFloorPlan = {
         [0, 7000],
         [0, 0],
       ],
-      thickness: 200,
+      thickness: 200, // Outer wall
+      isOuter: true,
     },
     {
       id: "w2",
       polyline: [
-        [6000, 0],
-        [6000, 7000],
+        [6000, 150], // Gap 150mm (outer wall 200mm/2 = 100mm + 50mm)
+        [6000, 6850], // Gap 150mm from bottom
       ],
-      thickness: 150,
+      thickness: 100, // Inner wall
+      isOuter: false,
     },
     {
       id: "w3",
       polyline: [
-        [0, 4000],
-        [9500, 4000],
+        [150, 4000], // Gap 150mm from left
+        [9350, 4000], // Gap 150mm from right
       ],
-      thickness: 150,
+      thickness: 100, // Inner wall
+      isOuter: false,
     },
     {
       id: "w4",
       polyline: [
-        [4000, 4000],
-        [4000, 7000],
+        [4000, 4000], // Intersects with w3
+        [4000, 6850], // Gap 150mm from bottom
       ],
-      thickness: 150,
+      thickness: 100, // Inner wall
+      isOuter: false,
     },
   ],
   openings: [
