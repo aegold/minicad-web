@@ -1,0 +1,76 @@
+/* Main page specific styles */
+.main-page {
+  display: grid;
+  grid-template-areas:
+    "toolbar"
+    "main";
+  grid-template-rows: 60px 1fr;
+  width: 100%;
+  height: 100%;
+  background: var(--bg-primary);
+}
+
+/* Toolbar */
+.main-page .toolbar {
+  grid-area: toolbar;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  gap: 20px;
+}
+
+.main-page .toolbar h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.main-page .toolbar-info {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+/* Main content area with canvas and panels */
+.main-page .main-content {
+  grid-area: main;
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Canvas area */
+.main-page .canvas-area {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+/* Right panel */
+.main-page .right-panel {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1024px) {
+  .main-page .main-content {
+    grid-template-columns: 1fr 280px;
+  }
+}
+
+@media (max-width: 768px) {
+  .main-page .main-content {
+    grid-template-columns: 1fr;
+  }
+
+  .main-page .right-panel {
+    display: none;
+  }
+}
