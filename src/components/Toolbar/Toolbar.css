@@ -1,0 +1,271 @@
+/**
+ * Toolbar styles
+ * Minimal, clean design with collapsible sidebar
+ */
+
+.toolbar {
+  width: 180px;
+  background: #ffffff;
+  border-right: 1px solid #e0e0e0;
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  gap: 8px;
+  overflow-y: auto;
+  transition: width 0.3s ease;
+  position: relative;
+}
+
+.toolbar.collapsed {
+  width: 50px;
+  padding: 8px 4px;
+}
+
+/* Toggle button */
+.toolbar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  padding: 0 8px;
+}
+
+.toolbar-toggle {
+  width: 24px;
+  height: 24px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  background: #ffffff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: #757575;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.toolbar-toggle:hover {
+  background: #f5f5f5;
+  border-color: #bdbdbd;
+  color: #424242;
+}
+
+.toolbar-toggle-collapsed {
+  width: 40px;
+  height: 40px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  background: #ffffff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: #757575;
+  transition: all 0.2s ease;
+  margin: 0 auto 8px auto;
+}
+
+.toolbar-toggle-collapsed:hover {
+  background: #f5f5f5;
+  border-color: #bdbdbd;
+  color: #424242;
+}
+
+.toolbar-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #424242;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex: 1;
+}
+
+.toolbar-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.toolbar-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  background: #ffffff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 13px;
+  color: #424242;
+  text-align: left;
+}
+
+.toolbar-btn:hover {
+  background: #f5f5f5;
+  border-color: #bdbdbd;
+}
+
+.toolbar-btn.active {
+  background: #1565c0;
+  color: #ffffff;
+  border-color: #1565c0;
+  font-weight: 500;
+}
+
+.toolbar-btn-icon {
+  font-size: 18px;
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.toolbar-btn-label {
+  flex: 1;
+}
+
+/* Collapsed state - icon only buttons */
+.toolbar-icons-only {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.toolbar-icon-btn {
+  width: 40px;
+  height: 40px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  background: #ffffff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  transition: all 0.2s ease;
+}
+
+.toolbar-icon-btn:hover {
+  background: #f5f5f5;
+  border-color: #bdbdbd;
+}
+
+.toolbar-icon-btn.active {
+  background: #1565c0;
+  border-color: #1565c0;
+}
+
+/* Add Objects section */
+.toolbar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.toolbar-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  background: #f5f5f5;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 13px;
+  color: #424242;
+  font-weight: 500;
+}
+
+.toolbar-section-header:hover {
+  background: #eeeeee;
+  border-color: #bdbdbd;
+}
+
+.toolbar-section-icon {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.toolbar-section-title {
+  flex: 1;
+  text-align: left;
+}
+
+.toolbar-section-arrow {
+  font-size: 10px;
+  color: #757575;
+}
+
+.toolbar-section-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 12px;
+}
+
+.toolbar-object-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 12px;
+  color: #424242;
+  text-align: left;
+}
+
+.toolbar-object-btn:hover {
+  background: #f5f5f5;
+  border-color: #e0e0e0;
+}
+
+.toolbar-object-icon {
+  font-size: 16px;
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.toolbar-object-label {
+  flex: 1;
+}
+
+.toolbar-divider {
+  height: 1px;
+  background: #e0e0e0;
+  margin: 8px 0;
+}
+
+.toolbar-info {
+  padding: 8px;
+  font-size: 11px;
+  color: #757575;
+  margin-top: auto;
+}
+
+.toolbar-shortcut {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.toolbar-shortcut strong {
+  color: #424242;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.toolbar-shortcut div {
+  padding: 2px 0;
+  font-family: "Courier New", monospace;
+}

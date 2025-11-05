@@ -3,8 +3,8 @@
  * Renders instances (doors, windows, stairs, etc.)
  */
 
-import React, { useMemo } from "react";
-import { Layer, Group, Line, Arc, Rect, Text } from "react-konva";
+import React, { useMemo, useRef } from "react";
+import { Layer, Group, Line, Arc, Rect, Text, Circle } from "react-konva";
 import useEditorStore from "../../store/editorStore";
 import { calculateInstancePosition } from "../../utils/instanceUtils";
 
@@ -167,6 +167,9 @@ const InstanceLayer = ({ viewport }) => {
   const selectedType = useEditorStore((state) => state.selectedType);
   const hoveredId = useEditorStore((state) => state.hoveredId);
   const hoveredType = useEditorStore((state) => state.hoveredType);
+  const executeCommand = useEditorStore((state) => state.executeCommand);
+
+  const dragStartRef = useRef(null);
 
   // Calculate positions for all instances
   const renderableInstances = useMemo(() => {
@@ -228,6 +231,138 @@ const InstanceLayer = ({ viewport }) => {
         const { Renderer, ...props } = item;
         return <Renderer key={item.id} {...props} />;
       })}
+
+      {/* Draggable handle for selected instance */}
+      {selectedType === "instance" &&
+        selectedIds.length > 0 &&
+        (() => {
+          const selectedId = selectedIds[0];
+          const instance = instances[selectedId];
+
+          if (!instance || !instance.constraint?.attachTo) return null;
+
+          const wall = walls[instance.constraint.attachTo.id];
+          if (!wall) return null;
+
+          const v1 = vertices[wall.vStart];
+          const v2 = vertices[wall.vEnd];
+          if (!v1 || !v2) return null;
+
+          // Calculate wall length
+          const wallLength = Math.sqrt(
+            Math.pow(v2.x - v1.x, 2) + Math.pow(v2.y - v1.y, 2)
+          );
+
+          // Calculate handle position (offsetFromStart is in mm)
+          const t = instance.constraint.offsetFromStart / wallLength;
+          const worldX = v1.x + (v2.x - v1.x) * t;
+          const worldY = v1.y + (v2.y - v1.y) * t;
+
+          // Transform to screen coords
+          const screenX = worldX * viewport.scale + viewport.x;
+          const screenY = worldY * viewport.scale + viewport.y;
+
+          const handleDragStart = () => {
+            dragStartRef.current = instance.constraint.offsetFromStart;
+          };
+
+          const handleDragMove = (e) => {
+            const circle = e.target;
+            const stage = circle.getStage();
+            const pointerPos = stage.getPointerPosition();
+
+            // Convert screen to world
+            const worldX = (pointerPos.x - viewport.x) / viewport.scale;
+            const worldY = (pointerPos.y - viewport.y) / viewport.scale;
+
+            // Project onto wall
+            const wallVecX = v2.x - v1.x;
+            const wallVecY = v2.y - v1.y;
+            const toCursorX = worldX - v1.x;
+            const toCursorY = worldY - v1.y;
+
+            const projection =
+              (toCursorX * wallVecX + toCursorY * wallVecY) /
+              (wallLength * wallLength);
+            const clampedProjection = Math.max(0, Math.min(1, projection));
+
+            // New offset in mm
+            const newOffset = clampedProjection * wallLength;
+
+            console.log("Dragging instance:", {
+              oldOffset: instance.constraint.offsetFromStart,
+              newOffset,
+              projection: clampedProjection,
+            });
+
+            // Update instance in store (direct mutation for real-time preview)
+            useEditorStore.setState((state) => ({
+              instances: {
+                ...state.instances,
+                [selectedId]: {
+                  ...state.instances[selectedId],
+                  constraint: {
+                    ...state.instances[selectedId].constraint,
+                    offsetFromStart: newOffset,
+                  },
+                },
+              },
+            }));
+
+            // Manually update circle position for smooth dragging
+            const newWorldX = v1.x + wallVecX * clampedProjection;
+            const newWorldY = v1.y + wallVecY * clampedProjection;
+            const newScreenX = newWorldX * viewport.scale + viewport.x;
+            const newScreenY = newWorldY * viewport.scale + viewport.y;
+            circle.x(newScreenX);
+            circle.y(newScreenY);
+          };
+
+          const handleDragEnd = () => {
+            if (dragStartRef.current === null) return;
+
+            const oldOffset = dragStartRef.current;
+            const newOffset = instances[selectedId].constraint.offsetFromStart;
+
+            if (Math.abs(newOffset - oldOffset) > 0.1) {
+              import("../../commands/MoveInstanceCommand").then((module) => {
+                const MoveInstanceCommand = module.default;
+                const command = new MoveInstanceCommand(
+                  selectedId,
+                  oldOffset,
+                  newOffset
+                );
+                executeCommand(command);
+              });
+            }
+
+            dragStartRef.current = null;
+          };
+
+          return (
+            <Circle
+              key={`handle-${selectedId}`}
+              x={screenX}
+              y={screenY}
+              radius={10}
+              fill="#ff6b6b"
+              stroke="#c92a2a"
+              strokeWidth={3}
+              draggable
+              onDragStart={handleDragStart}
+              onDragMove={handleDragMove}
+              onDragEnd={handleDragEnd}
+              onMouseEnter={(e) => {
+                e.target.getStage().container().style.cursor = "move";
+                e.target.radius(12);
+              }}
+              onMouseLeave={(e) => {
+                e.target.getStage().container().style.cursor = "default";
+                e.target.radius(10);
+              }}
+            />
+          );
+        })()}
     </Layer>
   );
 };

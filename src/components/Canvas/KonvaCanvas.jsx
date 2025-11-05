@@ -9,11 +9,13 @@ import GridLayer from "./GridLayer";
 import WallLayer from "./WallLayer";
 import RoomLayer from "./RoomLayer";
 import InstanceLayer from "./InstanceLayer";
+import HandlesLayer from "./HandlesLayer";
 import useEditorStore from "../../store/editorStore";
 import useTransform from "../../hooks/useTransform";
-import { CANVAS_BACKGROUND, ZOOM_SPEED } from "../../utils/constants";
+import { CANVAS_BACKGROUND, ZOOM_SPEED, TOOLS } from "../../utils/constants";
 import { calculateFloorPlanBounds } from "../../utils/floorPlanUtils";
 import { findHitObject } from "../../utils/hitTest";
+import DeleteCommand from "../../commands/DeleteCommand";
 import "./KonvaCanvas.css";
 
 const KonvaCanvas = () => {
@@ -23,18 +25,28 @@ const KonvaCanvas = () => {
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [cursor, setCursor] = useState("default");
+  const [hasAutoFitted, setHasAutoFitted] = useState(false);
 
   const { viewport, screenToWorld, zoom, pan, fitToScreen, getZoomPercentage } =
     useTransform();
   const gridVisible = useEditorStore((state) => state.gridVisible);
   const currentTool = useEditorStore((state) => state.currentTool);
+  const setTool = useEditorStore((state) => state.setTool);
   const vertices = useEditorStore((state) => state.vertices);
   const walls = useEditorStore((state) => state.walls);
   const rooms = useEditorStore((state) => state.rooms);
+  const instances = useEditorStore((state) => state.instances);
   const selectItem = useEditorStore((state) => state.selectItem);
   const clearSelection = useEditorStore((state) => state.clearSelection);
   const setHovered = useEditorStore((state) => state.setHovered);
   const clearHovered = useEditorStore((state) => state.clearHovered);
+  const undo = useEditorStore((state) => state.undo);
+  const redo = useEditorStore((state) => state.redo);
+  const canUndo = useEditorStore((state) => state.canUndo);
+  const canRedo = useEditorStore((state) => state.canRedo);
+  const executeCommand = useEditorStore((state) => state.executeCommand);
+  const selectedIds = useEditorStore((state) => state.selectedIds);
+  const selectedType = useEditorStore((state) => state.selectedType);
 
   // Handle canvas resize
   useEffect(() => {
@@ -53,8 +65,10 @@ const KonvaCanvas = () => {
   }, []);
 
   // Auto fit to screen when data loads or dimensions change
+  // Only run once on initial load, not when vertices are being edited
   useEffect(() => {
     if (
+      !hasAutoFitted &&
       Object.keys(vertices).length > 0 &&
       dimensions.width > 0 &&
       dimensions.height > 0
@@ -65,14 +79,108 @@ const KonvaCanvas = () => {
         // Small delay to ensure canvas is ready
         setTimeout(() => {
           fitToScreen(bounds, dimensions.width, dimensions.height, 100);
+          setHasAutoFitted(true);
         }, 100);
       }
     }
-  }, [vertices, walls, rooms, dimensions, fitToScreen]);
+  }, [vertices, walls, rooms, dimensions, fitToScreen, hasAutoFitted]);
 
-  // Handle keyboard arrow keys for panning
+  // Handle keyboard shortcuts (arrows, undo/redo, delete, tool switching)
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // Don't trigger shortcuts if user is typing in an input
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") {
+        return;
+      }
+
+      // Tool switching shortcuts (lowercase only, no modifiers)
+      if (!e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
+        switch (e.key.toLowerCase()) {
+          case "v":
+            e.preventDefault();
+            setTool(TOOLS.SELECT);
+            return;
+          case "b":
+            e.preventDefault();
+            setTool(TOOLS.PAN);
+            return;
+          case "n":
+            e.preventDefault();
+            setTool(TOOLS.DRAW_ROOM);
+            return;
+          case "m":
+            e.preventDefault();
+            setTool(TOOLS.DRAW_WALL);
+            return;
+        }
+      }
+
+      // Undo: Ctrl+Z
+      if (e.ctrlKey && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        if (canUndo()) {
+          undo();
+        }
+        return;
+      }
+
+      // Redo: Ctrl+Y or Ctrl+Shift+Z
+      if (
+        (e.ctrlKey && e.key === "y") ||
+        (e.ctrlKey && e.shiftKey && e.key === "z")
+      ) {
+        e.preventDefault();
+        if (canRedo()) {
+          redo();
+        }
+        return;
+      }
+
+      // Escape: Clear selection
+      if (e.key === "Escape") {
+        e.preventDefault();
+        clearSelection();
+        return;
+      }
+
+      // Delete: Delete selected object
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+
+        // Check if anything is selected
+        if (selectedIds.length > 0 && selectedType) {
+          // For now, only delete the first selected item (single selection)
+          const objectId = selectedIds[0];
+          let objectData = null;
+
+          // Get object data for backup
+          switch (selectedType) {
+            case "room":
+              objectData = rooms[objectId];
+              break;
+            case "wall":
+              objectData = walls[objectId];
+              break;
+            case "instance":
+              objectData = instances[objectId];
+              break;
+            case "vertex":
+              objectData = vertices[objectId];
+              break;
+          }
+
+          if (objectData) {
+            const command = new DeleteCommand(
+              selectedType,
+              objectId,
+              objectData
+            );
+            executeCommand(command);
+          }
+        }
+        return;
+      }
+
       // Pan distance in pixels
       const panDistance = 50;
 
@@ -100,7 +208,22 @@ const KonvaCanvas = () => {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [pan]);
+  }, [
+    pan,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    clearSelection,
+    setTool,
+    executeCommand,
+    selectedIds,
+    selectedType,
+    rooms,
+    walls,
+    instances,
+    vertices,
+  ]);
 
   // Handle wheel zoom
   const handleWheel = (e) => {
@@ -119,6 +242,11 @@ const KonvaCanvas = () => {
   const handleMouseDown = (e) => {
     const stage = stageRef.current;
     if (!stage) return;
+
+    // Skip if clicking on a draggable element (handle)
+    if (e.target.draggable && e.target.draggable()) {
+      return;
+    }
 
     const pointer = stage.getPointerPosition();
 
@@ -163,16 +291,43 @@ const KonvaCanvas = () => {
       return;
     }
 
-    // Otherwise, check for hover
-    const worldPoint = screenToWorld([pointer.x, pointer.y]);
-    const hit = findHitObject(worldPoint, useEditorStore.getState());
+    // Skip hover detection if hovering over draggable element
+    if (e.target.draggable && e.target.draggable()) {
+      return;
+    }
 
-    if (hit) {
-      setHovered(hit.id, hit.type);
-      setCursor("pointer");
+    // Set cursor based on current tool
+    let toolCursor = "default";
+    switch (currentTool) {
+      case TOOLS.SELECT:
+        toolCursor = "default";
+        break;
+      case TOOLS.PAN:
+        toolCursor = "grab";
+        break;
+      case TOOLS.DRAW_ROOM:
+      case TOOLS.DRAW_WALL:
+        toolCursor = "crosshair";
+        break;
+      default:
+        toolCursor = "default";
+    }
+
+    // Otherwise, check for hover (only in SELECT mode)
+    if (currentTool === TOOLS.SELECT) {
+      const worldPoint = screenToWorld([pointer.x, pointer.y]);
+      const hit = findHitObject(worldPoint, useEditorStore.getState());
+
+      if (hit) {
+        setHovered(hit.id, hit.type);
+        setCursor("pointer");
+      } else {
+        clearHovered();
+        setCursor(toolCursor);
+      }
     } else {
       clearHovered();
-      setCursor("default");
+      setCursor(toolCursor);
     }
   };
 
@@ -244,6 +399,9 @@ const KonvaCanvas = () => {
 
         {/* Instance layer (doors, windows, etc.) */}
         <InstanceLayer viewport={viewport} />
+
+        {/* Handles layer (vertex circles for editing) */}
+        <HandlesLayer viewport={viewport} />
       </Stage>
 
       {/* Canvas info overlay */}
@@ -261,6 +419,7 @@ const KonvaCanvas = () => {
             const bounds = calculateFloorPlanBounds(state);
             if (bounds) {
               fitToScreen(bounds, dimensions.width, dimensions.height, 100);
+              setHasAutoFitted(true);
             }
           }}
           title="Fit to screen"
