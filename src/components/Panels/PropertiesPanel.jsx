@@ -3,20 +3,31 @@
  * Displays list of detected rooms with their areas
  */
 
-import React from "react";
+import React, { useMemo } from "react";
 import useEditorStore from "../../store/editorStore";
 import { formatArea, getRoomTypeName } from "../../utils/constants";
+import { calculateRoomArea } from "../../utils/roomUtils";
 import "./PropertiesPanel.css";
 
 const PropertiesPanel = () => {
   const rooms = useEditorStore((state) => state.rooms);
+  const vertices = useEditorStore((state) => state.vertices);
   const selectedIds = useEditorStore((state) => state.selectedIds);
   const selectedType = useEditorStore((state) => state.selectedType);
   const selectItem = useEditorStore((state) => state.selectItem);
   const clearSelection = useEditorStore((state) => state.clearSelection);
 
+  // Convert rooms object to array and calculate areas
+  const roomsArray = useMemo(() => {
+    return Object.entries(rooms).map(([id, room]) => ({
+      id,
+      ...room,
+      area: calculateRoomArea(room, vertices),
+    }));
+  }, [rooms, vertices]);
+
   // Calculate total area
-  const totalArea = rooms.reduce((sum, room) => sum + (room.area || 0), 0);
+  const totalArea = roomsArray.reduce((sum, room) => sum + (room.area || 0), 0);
   const totalAreaM2 = formatArea(totalArea);
 
   const handleRoomClick = (roomId) => {
@@ -40,17 +51,17 @@ const PropertiesPanel = () => {
         {/* Total area summary */}
         <div className="total-area">
           <div className="total-label">
-            Total Coverage ({rooms.length} areas)
+            Total Coverage ({roomsArray.length} areas)
           </div>
           <div className="total-value">{totalAreaM2} m²</div>
         </div>
 
         {/* Room list */}
         <div className="room-list">
-          {rooms.length === 0 ? (
+          {roomsArray.length === 0 ? (
             <div className="empty-state">No rooms detected</div>
           ) : (
-            rooms.map((room, index) => {
+            roomsArray.map((room, index) => {
               const isSelected =
                 selectedType === "room" && selectedIds.includes(room.id);
               const areaM2 = formatArea(room.area || 0);

@@ -7,6 +7,8 @@ import "./MainPage.css";
 
 function MainPage() {
   const loadJSON = useEditorStore((state) => state.loadJSON);
+  const vertices = useEditorStore((state) => state.vertices);
+  const walls = useEditorStore((state) => state.walls);
   const rooms = useEditorStore((state) => state.rooms);
 
   // Load sample data on mount
@@ -15,10 +17,10 @@ function MainPage() {
     loadJSON(sampleFloorPlan);
   }, [loadJSON]);
 
-  // Debug: log rooms after load
+  // Debug: log data after load
   useEffect(() => {
-    console.log("Rooms loaded:", rooms);
-  }, [rooms]);
+    console.log("Data loaded:", { vertices, walls, rooms });
+  }, [vertices, walls, rooms]);
 
   return (
     <div className="main-page">

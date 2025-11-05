@@ -1,90 +1,98 @@
 /**
  * WallLayer component
- * Renders all walls as thick polylines
+ * Renders walls as thick lines connecting vertices
  */
 
-import React from "react";
+import React, { useMemo } from "react";
 import { Layer, Line } from "react-konva";
-import { flattenPoints } from "../../utils/geometry";
-import {
-  WALL_COLOR,
-  WALL_OPACITY,
-  SELECTION_COLOR,
-} from "../../utils/constants";
 import useEditorStore from "../../store/editorStore";
 
-const WallLayer = ({ viewport, visible = true }) => {
+const WallLayer = ({ viewport }) => {
   const walls = useEditorStore((state) => state.walls);
+  const vertices = useEditorStore((state) => state.vertices);
   const selectedIds = useEditorStore((state) => state.selectedIds);
   const selectedType = useEditorStore((state) => state.selectedType);
   const hoveredId = useEditorStore((state) => state.hoveredId);
   const hoveredType = useEditorStore((state) => state.hoveredType);
-  const selectItem = useEditorStore((state) => state.selectItem);
-  const setHovered = useEditorStore((state) => state.setHovered);
-  const clearHovered = useEditorStore((state) => state.clearHovered);
 
-  if (!visible || !walls || walls.length === 0) return null;
+  // Convert walls to renderable format
+  const wallLines = useMemo(() => {
+    const lines = [];
 
-  const { scale, x, y } = viewport;
+    for (const [wallId, wall] of Object.entries(walls)) {
+      const vStart = vertices[wall.vStart];
+      const vEnd = vertices[wall.vEnd];
 
-  const handleWallClick = (wall, e) => {
-    e.cancelBubble = true;
-    const addToSelection = e.evt.shiftKey || e.evt.ctrlKey;
-    selectItem(wall.id, "wall", addToSelection);
-  };
+      // Skip if vertices don't exist
+      if (!vStart || !vEnd) {
+        console.warn(`Wall ${wallId} has missing vertices`);
+        continue;
+      }
 
-  const handleWallMouseEnter = (wall) => {
-    setHovered(wall.id, "wall");
-  };
+      // Transform to screen coordinates
+      const x1 = vStart.x * viewport.scale + viewport.x;
+      const y1 = vStart.y * viewport.scale + viewport.y;
+      const x2 = vEnd.x * viewport.scale + viewport.x;
+      const y2 = vEnd.y * viewport.scale + viewport.y;
 
-  const handleWallMouseLeave = () => {
-    clearHovered();
-  };
+      // Calculate stroke width based on wall thickness and scale
+      const strokeWidth = Math.max(
+        (wall.thickness || 200) * viewport.scale * 0.01,
+        2
+      );
+
+      // Check if selected or hovered
+      const isSelected =
+        selectedType === "wall" && selectedIds.includes(wallId);
+      const isHovered = hoveredType === "wall" && hoveredId === wallId;
+
+      lines.push({
+        id: wallId,
+        points: [x1, y1, x2, y2],
+        strokeWidth,
+        isOuter: wall.isOuter,
+        isSelected,
+        isHovered,
+      });
+    }
+
+    return lines;
+  }, [
+    walls,
+    vertices,
+    viewport,
+    selectedIds,
+    selectedType,
+    hoveredId,
+    hoveredType,
+  ]);
 
   return (
     <Layer name="walls">
-      {walls.map((wall) => {
-        if (!wall.polyline || wall.polyline.length < 2) return null;
-
-        const isSelected =
-          selectedType === "wall" && selectedIds.includes(wall.id);
-        const isHovered = hoveredType === "wall" && hoveredId === wall.id;
-
-        // Transform polyline to screen coordinates
-        const screenPolyline = wall.polyline.map(([wx, wy]) => [
-          wx * scale + x,
-          wy * scale + y,
-        ]);
-
-        const points = flattenPoints(screenPolyline);
-
-        // Scale wall thickness
-        const thickness = (wall.thickness || 200) * scale;
-        const strokeWidth = Math.max(thickness, 1); // Minimum 1px
-
-        const strokeColor = isSelected
-          ? SELECTION_COLOR
-          : isHovered
-          ? "#555"
-          : WALL_COLOR;
-        const opacity = isHovered ? 0.7 : WALL_OPACITY;
-
-        return (
-          <Line
-            key={wall.id}
-            points={points}
-            stroke={strokeColor}
-            strokeWidth={strokeWidth}
-            opacity={opacity}
-            lineCap="round"
-            lineJoin="round"
-            onClick={(e) => handleWallClick(wall, e)}
-            onMouseEnter={() => handleWallMouseEnter(wall)}
-            onMouseLeave={handleWallMouseLeave}
-            listening={true}
-          />
-        );
-      })}
+      {wallLines.map((wall) => (
+        <Line
+          key={wall.id}
+          points={wall.points}
+          stroke={
+            wall.isSelected
+              ? "#1565c0" // Dark blue for selected
+              : wall.isHovered
+              ? "#64b5f6" // Light blue for hover
+              : "#000000"
+          }
+          strokeWidth={
+            wall.isSelected
+              ? wall.strokeWidth + 3
+              : wall.isHovered
+              ? wall.strokeWidth + 1
+              : wall.strokeWidth
+          }
+          opacity={1}
+          lineCap="square"
+          lineJoin="miter"
+          listening={false}
+        />
+      ))}
     </Layer>
   );
 };

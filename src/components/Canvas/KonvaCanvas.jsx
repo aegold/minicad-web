@@ -6,29 +6,35 @@
 import React, { useRef, useEffect, useState } from "react";
 import { Stage } from "react-konva";
 import GridLayer from "./GridLayer";
-import RoomLayer from "./RoomLayer";
 import WallLayer from "./WallLayer";
-import LabelLayer from "./LabelLayer";
-import SnapIndicator from "./SnapIndicator";
+import RoomLayer from "./RoomLayer";
+import InstanceLayer from "./InstanceLayer";
 import useEditorStore from "../../store/editorStore";
 import useTransform from "../../hooks/useTransform";
-import { getBoundingBox } from "../../utils/geometry";
 import { CANVAS_BACKGROUND, ZOOM_SPEED } from "../../utils/constants";
+import { calculateFloorPlanBounds } from "../../utils/floorPlanUtils";
+import { findHitObject } from "../../utils/hitTest";
 import "./KonvaCanvas.css";
 
 const KonvaCanvas = () => {
   const stageRef = useRef(null);
   const containerRef = useRef(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+  const [cursor, setCursor] = useState("default");
 
   const { viewport, screenToWorld, zoom, pan, fitToScreen, getZoomPercentage } =
     useTransform();
-  const rooms = useEditorStore((state) => state.rooms);
-  const walls = useEditorStore((state) => state.walls);
   const gridVisible = useEditorStore((state) => state.gridVisible);
-  const layerVisibility = useEditorStore((state) => state.layerVisibility);
-  const clearSelection = useEditorStore((state) => state.clearSelection);
   const currentTool = useEditorStore((state) => state.currentTool);
+  const vertices = useEditorStore((state) => state.vertices);
+  const walls = useEditorStore((state) => state.walls);
+  const rooms = useEditorStore((state) => state.rooms);
+  const selectItem = useEditorStore((state) => state.selectItem);
+  const clearSelection = useEditorStore((state) => state.clearSelection);
+  const setHovered = useEditorStore((state) => state.setHovered);
+  const clearHovered = useEditorStore((state) => state.clearHovered);
 
   // Handle canvas resize
   useEffect(() => {
@@ -45,6 +51,24 @@ const KonvaCanvas = () => {
     window.addEventListener("resize", updateDimensions);
     return () => window.removeEventListener("resize", updateDimensions);
   }, []);
+
+  // Auto fit to screen when data loads or dimensions change
+  useEffect(() => {
+    if (
+      Object.keys(vertices).length > 0 &&
+      dimensions.width > 0 &&
+      dimensions.height > 0
+    ) {
+      const state = { vertices, walls, rooms };
+      const bounds = calculateFloorPlanBounds(state);
+      if (bounds) {
+        // Small delay to ensure canvas is ready
+        setTimeout(() => {
+          fitToScreen(bounds, dimensions.width, dimensions.height, 100);
+        }, 100);
+      }
+    }
+  }, [vertices, walls, rooms, dimensions, fitToScreen]);
 
   // Handle keyboard arrow keys for panning
   useEffect(() => {
@@ -78,50 +102,6 @@ const KonvaCanvas = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [pan]);
 
-  // Fit to screen when data loads or dimensions change
-  useEffect(() => {
-    if (
-      (rooms.length > 0 || walls.length > 0) &&
-      dimensions.width > 0 &&
-      dimensions.height > 0
-    ) {
-      // Calculate bounding box of all elements
-      let minX = Infinity;
-      let minY = Infinity;
-      let maxX = -Infinity;
-      let maxY = -Infinity;
-
-      // Check rooms
-      rooms.forEach((room) => {
-        if (room.polygon) {
-          room.polygon.forEach(([x, y]) => {
-            minX = Math.min(minX, x);
-            minY = Math.min(minY, y);
-            maxX = Math.max(maxX, x);
-            maxY = Math.max(maxY, y);
-          });
-        }
-      });
-
-      // Check walls
-      walls.forEach((wall) => {
-        if (wall.polyline) {
-          wall.polyline.forEach(([x, y]) => {
-            minX = Math.min(minX, x);
-            minY = Math.min(minY, y);
-            maxX = Math.max(maxX, x);
-            maxY = Math.max(maxY, y);
-          });
-        }
-      });
-
-      if (minX !== Infinity) {
-        const bbox = { minX, minY, maxX, maxY };
-        fitToScreen(bbox, dimensions.width, dimensions.height, 50);
-      }
-    }
-  }, [rooms, walls, dimensions, fitToScreen]);
-
   // Handle wheel zoom
   const handleWheel = (e) => {
     e.evt.preventDefault();
@@ -135,38 +115,105 @@ const KonvaCanvas = () => {
     zoom(delta, [pointer.x, pointer.y]);
   };
 
-  // Handle mouse down (select or clear selection)
+  // Handle mouse down
   const handleMouseDown = (e) => {
     const stage = stageRef.current;
     if (!stage) return;
 
-    // Click on empty canvas - clear selection
-    if (e.target === stage) {
-      clearSelection();
+    const pointer = stage.getPointerPosition();
+
+    // Right click: start panning
+    if (e.evt.button === 2) {
+      e.evt.preventDefault();
+      setIsPanning(true);
+      setPanStart({ x: pointer.x, y: pointer.y });
+      setCursor("grabbing");
+      return;
+    }
+
+    // Left click: selection
+    if (e.evt.button === 0) {
+      // Convert screen → world coordinates
+      const worldPoint = screenToWorld([pointer.x, pointer.y]);
+
+      // Find what was clicked
+      const hit = findHitObject(worldPoint, useEditorStore.getState());
+
+      if (hit) {
+        selectItem(hit.id, hit.type);
+      } else {
+        clearSelection();
+      }
     }
   };
 
-  // Update cursor based on tool
+  // Handle mouse move
+  const handleMouseMove = (e) => {
+    const stage = stageRef.current;
+    if (!stage) return;
+
+    const pointer = stage.getPointerPosition();
+
+    // If panning, update viewport
+    if (isPanning) {
+      const dx = pointer.x - panStart.x;
+      const dy = pointer.y - panStart.y;
+      pan(dx, dy);
+      setPanStart({ x: pointer.x, y: pointer.y });
+      return;
+    }
+
+    // Otherwise, check for hover
+    const worldPoint = screenToWorld([pointer.x, pointer.y]);
+    const hit = findHitObject(worldPoint, useEditorStore.getState());
+
+    if (hit) {
+      setHovered(hit.id, hit.type);
+      setCursor("pointer");
+    } else {
+      clearHovered();
+      setCursor("default");
+    }
+  };
+
+  // Handle mouse up
+  const handleMouseUp = (e) => {
+    if (e.evt.button === 2 && isPanning) {
+      setIsPanning(false);
+      setCursor("default");
+    }
+  };
+
+  // Handle mouse leave
+  const handleMouseLeave = () => {
+    clearHovered();
+    if (isPanning) {
+      setIsPanning(false);
+      setCursor("default");
+    }
+  };
+
+  // Prevent context menu on right click
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleContextMenu = (e) => {
+      e.preventDefault();
+    };
+
+    container.addEventListener("contextmenu", handleContextMenu);
+    return () =>
+      container.removeEventListener("contextmenu", handleContextMenu);
+  }, []);
+
+  // Update cursor based on tool and state
   useEffect(() => {
     if (stageRef.current) {
       const container = stageRef.current.container();
-
-      switch (currentTool) {
-        case "select":
-          container.style.cursor = "default";
-          break;
-        case "draw-room":
-        case "draw-wall":
-          container.style.cursor = "crosshair";
-          break;
-        case "pan":
-          container.style.cursor = "grab";
-          break;
-        default:
-          container.style.cursor = "default";
-      }
+      container.style.cursor = cursor;
     }
-  }, [currentTool]);
+  }, [cursor]);
 
   return (
     <div ref={containerRef} className="konva-canvas-container">
@@ -176,6 +223,9 @@ const KonvaCanvas = () => {
         height={dimensions.height}
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
         style={{ background: CANVAS_BACKGROUND }}
       >
         {/* Grid layer */}
@@ -186,17 +236,14 @@ const KonvaCanvas = () => {
           visible={gridVisible}
         />
 
-        {/* Room layer */}
-        <RoomLayer viewport={viewport} visible={layerVisibility.rooms} />
+        {/* Room layer (filled polygons) */}
+        <RoomLayer viewport={viewport} />
 
-        {/* Wall layer */}
-        <WallLayer viewport={viewport} visible={layerVisibility.walls} />
+        {/* Wall layer (thick lines) */}
+        <WallLayer viewport={viewport} />
 
-        {/* Label layer */}
-        <LabelLayer viewport={viewport} visible={layerVisibility.labels} />
-
-        {/* Snap indicator */}
-        <SnapIndicator viewport={viewport} />
+        {/* Instance layer (doors, windows, etc.) */}
+        <InstanceLayer viewport={viewport} />
       </Stage>
 
       {/* Canvas info overlay */}
@@ -210,42 +257,10 @@ const KonvaCanvas = () => {
         <button
           className="btn-fit"
           onClick={() => {
-            if (rooms.length > 0 || walls.length > 0) {
-              let minX = Infinity;
-              let minY = Infinity;
-              let maxX = -Infinity;
-              let maxY = -Infinity;
-
-              rooms.forEach((room) => {
-                if (room.polygon) {
-                  room.polygon.forEach(([x, y]) => {
-                    minX = Math.min(minX, x);
-                    minY = Math.min(minY, y);
-                    maxX = Math.max(maxX, x);
-                    maxY = Math.max(maxY, y);
-                  });
-                }
-              });
-
-              walls.forEach((wall) => {
-                if (wall.polyline) {
-                  wall.polyline.forEach(([x, y]) => {
-                    minX = Math.min(minX, x);
-                    minY = Math.min(minY, y);
-                    maxX = Math.max(maxX, x);
-                    maxY = Math.max(maxY, y);
-                  });
-                }
-              });
-
-              if (minX !== Infinity) {
-                fitToScreen(
-                  { minX, minY, maxX, maxY },
-                  dimensions.width,
-                  dimensions.height,
-                  50
-                );
-              }
+            const state = { vertices, walls, rooms };
+            const bounds = calculateFloorPlanBounds(state);
+            if (bounds) {
+              fitToScreen(bounds, dimensions.width, dimensions.height, 100);
             }
           }}
           title="Fit to screen"

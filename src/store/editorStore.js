@@ -6,20 +6,24 @@ import { TOOLS, INITIAL_ZOOM } from "../utils/constants";
  * Manages all application state and actions
  */
 const useEditorStore = create((set, get) => ({
-  // ==================== DATA ====================
+  // ==================== DATA (NEW FORMAT) ====================
   units: "mm",
-  rooms: [],
-  walls: [],
-  openings: [],
-  labels: [],
+  vertices: {}, // { "v1": { x: 0, y: 0 }, "v2": { x: 100, y: 0 }, ... }
+  walls: {}, // { "w1": { vStart: "v1", vEnd: "v2", thickness: 200, isOuter: true }, ... }
+  rooms: {}, // { "r1": { name: "...", vertices: ["v1", "v2", ...], walls: ["w1", ...], type: "...", area: ... }, ... }
+
+  // Symbol definitions (door types, window types, stairs, etc.)
+  symbols: {}, // { "door.single": { type: "anchored", anchor: "wall", geometry: {...}, render: {...} }, ... }
+
+  // Instances of symbols (actual doors, windows, stairs in the plan)
+  instances: {}, // { "d1": { symbol: "door.single", constraint: {...}, transform: {...}, props: {...} }, ... }
 
   // ==================== UI STATE ====================
   selectedIds: [],
-  selectedType: null, // 'room' | 'wall' | 'opening' | null
+  selectedType: null, // 'vertex' | 'wall' | 'room' | 'instance' | null
   currentTool: TOOLS.SELECT,
   hoveredId: null,
   hoveredType: null,
-  snapPoint: null, // { type, point: [x, y], entityId }
 
   // ==================== VIEW STATE ====================
   viewport: {
@@ -27,35 +31,30 @@ const useEditorStore = create((set, get) => ({
     y: 0,
     scale: INITIAL_ZOOM,
   },
-  baseScale: 1, // Base scale when fit to screen (considered as 100%)
+  baseScale: 1,
   gridVisible: true,
-  layerVisibility: {
-    rooms: true,
-    walls: true,
-    openings: true,
-    labels: true,
-  },
 
   // ==================== HISTORY ====================
   commandHistory: [],
   historyIndex: -1,
 
-  // ==================== TEMP STATE (for drawing) ====================
-  tempPoints: [], // Temporary points while drawing
+  // ==================== TEMP STATE ====================
+  tempPoints: [],
   isDrawing: false,
 
   // ==================== ACTIONS ====================
 
   /**
-   * Load JSON data into the editor
+   * Load JSON data into the editor (NEW FORMAT)
    */
   loadJSON: (data) => {
     set({
       units: data.units || "mm",
-      rooms: data.rooms || [],
-      walls: data.walls || [],
-      openings: data.openings || [],
-      labels: data.labels || [],
+      vertices: data.vertices || {},
+      walls: data.walls || {},
+      rooms: data.rooms || {},
+      symbols: data.symbols || {},
+      instances: data.instances || {},
       selectedIds: [],
       selectedType: null,
       commandHistory: [],
@@ -64,16 +63,17 @@ const useEditorStore = create((set, get) => ({
   },
 
   /**
-   * Export current state as JSON
+   * Export current state as JSON (NEW FORMAT)
    */
   exportJSON: () => {
     const state = get();
     return {
       units: state.units,
-      rooms: state.rooms,
+      vertices: state.vertices,
       walls: state.walls,
-      openings: state.openings,
-      labels: state.labels,
+      rooms: state.rooms,
+      symbols: state.symbols,
+      instances: state.instances,
     };
   },
 
@@ -161,18 +161,54 @@ const useEditorStore = create((set, get) => ({
     const state = get();
 
     if (addToSelection) {
-      // Add to existing selection
-      set({
-        selectedIds: [...state.selectedIds, id],
-        selectedType: type,
-      });
+      // Multi-select: add to existing selection if same type
+      if (state.selectedType === type || state.selectedType === null) {
+        set({
+          selectedIds: [...state.selectedIds, id],
+          selectedType: type,
+        });
+      } else {
+        // Different type: replace selection
+        set({
+          selectedIds: [id],
+          selectedType: type,
+        });
+      }
     } else {
-      // Replace selection
       set({
         selectedIds: [id],
         selectedType: type,
       });
     }
+  },
+
+  /**
+   * Toggle selection (select if not selected, deselect if already selected)
+   */
+  toggleSelection: (id, type) => {
+    const state = get();
+
+    if (state.selectedType === type && state.selectedIds.includes(id)) {
+      // Already selected: remove from selection
+      const newSelectedIds = state.selectedIds.filter(
+        (selectedId) => selectedId !== id
+      );
+      set({
+        selectedIds: newSelectedIds,
+        selectedType: newSelectedIds.length > 0 ? type : null,
+      });
+    } else {
+      // Not selected: add to selection
+      get().selectItem(id, type, true);
+    }
+  },
+
+  /**
+   * Check if item is selected
+   */
+  isSelected: (id, type) => {
+    const state = get();
+    return state.selectedType === type && state.selectedIds.includes(id);
   },
 
   /**
@@ -206,10 +242,11 @@ const useEditorStore = create((set, get) => ({
   },
 
   /**
-   * Set snap point
+   * Check if item is hovered
    */
-  setSnapPoint: (snapPoint) => {
-    set({ snapPoint });
+  isHovered: (id, type) => {
+    const state = get();
+    return state.hoveredId === id && state.hoveredType === type;
   },
 
   /**
@@ -235,167 +272,8 @@ const useEditorStore = create((set, get) => ({
     }));
   },
 
-  /**
-   * Toggle layer visibility
-   */
-  toggleLayer: (layerName) => {
-    set((state) => ({
-      layerVisibility: {
-        ...state.layerVisibility,
-        [layerName]: !state.layerVisibility[layerName],
-      },
-    }));
-  },
-
-  /**
-   * Add room
-   */
-  addRoom: (room) => {
-    set((state) => ({
-      rooms: [...state.rooms, room],
-    }));
-  },
-
-  /**
-   * Update room
-   */
-  updateRoom: (id, updates) => {
-    set((state) => ({
-      rooms: state.rooms.map((room) =>
-        room.id === id ? { ...room, ...updates } : room
-      ),
-    }));
-  },
-
-  /**
-   * Delete room
-   */
-  deleteRoom: (id) => {
-    set((state) => ({
-      rooms: state.rooms.filter((room) => room.id !== id),
-      labels: state.labels.filter((label) => label.roomId !== id),
-    }));
-  },
-
-  /**
-   * Get room by ID
-   */
-  getRoom: (id) => {
-    return get().rooms.find((room) => room.id === id);
-  },
-
-  /**
-   * Add wall
-   */
-  addWall: (wall) => {
-    set((state) => ({
-      walls: [...state.walls, wall],
-    }));
-  },
-
-  /**
-   * Update wall
-   */
-  updateWall: (id, updates) => {
-    set((state) => ({
-      walls: state.walls.map((wall) =>
-        wall.id === id ? { ...wall, ...updates } : wall
-      ),
-    }));
-  },
-
-  /**
-   * Delete wall
-   */
-  deleteWall: (id) => {
-    set((state) => ({
-      walls: state.walls.filter((wall) => wall.id !== id),
-    }));
-  },
-
-  /**
-   * Get wall by ID
-   */
-  getWall: (id) => {
-    return get().walls.find((wall) => wall.id === id);
-  },
-
-  /**
-   * Add opening
-   */
-  addOpening: (opening) => {
-    set((state) => ({
-      openings: [...state.openings, opening],
-    }));
-  },
-
-  /**
-   * Delete opening
-   */
-  deleteOpening: (id) => {
-    set((state) => ({
-      openings: state.openings.filter((opening) => opening.id !== id),
-    }));
-  },
-
-  /**
-   * Add label
-   */
-  addLabel: (label) => {
-    set((state) => ({
-      labels: [...state.labels, label],
-    }));
-  },
-
-  /**
-   * Update label
-   */
-  updateLabel: (id, updates) => {
-    set((state) => ({
-      labels: state.labels.map((label) =>
-        label.id === id ? { ...label, ...updates } : label
-      ),
-    }));
-  },
-
-  /**
-   * Delete label
-   */
-  deleteLabel: (id) => {
-    set((state) => ({
-      labels: state.labels.filter((label) => label.id !== id),
-    }));
-  },
-
-  /**
-   * Set temp points (for drawing)
-   */
-  setTempPoints: (points) => {
-    set({ tempPoints: points });
-  },
-
-  /**
-   * Add temp point
-   */
-  addTempPoint: (point) => {
-    set((state) => ({
-      tempPoints: [...state.tempPoints, point],
-    }));
-  },
-
-  /**
-   * Clear temp points
-   */
-  clearTempPoints: () => {
-    set({ tempPoints: [], isDrawing: false });
-  },
-
-  /**
-   * Set drawing state
-   */
-  setIsDrawing: (isDrawing) => {
-    set({ isDrawing });
-  },
+  // ==================== CRUD OPERATIONS (NEW FORMAT) ====================
+  // TODO: Will add vertex/wall/room/opening/label operations here
 
   /**
    * Reset entire store to initial state
@@ -403,24 +281,18 @@ const useEditorStore = create((set, get) => ({
   reset: () => {
     set({
       units: "mm",
-      rooms: [],
-      walls: [],
-      openings: [],
-      labels: [],
+      vertices: {},
+      walls: {},
+      rooms: {},
+      symbols: {},
+      instances: {},
       selectedIds: [],
       selectedType: null,
       currentTool: TOOLS.SELECT,
       hoveredId: null,
       hoveredType: null,
-      snapPoint: null,
       viewport: { x: 0, y: 0, scale: INITIAL_ZOOM },
       gridVisible: true,
-      layerVisibility: {
-        rooms: true,
-        walls: true,
-        openings: true,
-        labels: true,
-      },
       commandHistory: [],
       historyIndex: -1,
       tempPoints: [],
