@@ -16,14 +16,17 @@ import { formatArea } from "../../utils/constants";
 // Room type colors (pastel, minimal)
 const ROOM_COLORS = {
   living: { fill: "#e3f2fd", stroke: "#90caf9" },
+  livingroom: { fill: "#e3f2fd", stroke: "#90caf9" }, // Alias for living
   bedroom: { fill: "#f3e5f5", stroke: "#ce93d8" },
   kitchen: { fill: "#fff3e0", stroke: "#ffcc80" },
   bathroom: { fill: "#e0f2f1", stroke: "#80cbc4" },
   dining: { fill: "#fff9c4", stroke: "#fff176" },
   office: { fill: "#f1f8e9", stroke: "#c5e1a5" },
   storage: { fill: "#efebe9", stroke: "#bcaaa4" },
+  closet: { fill: "#efebe9", stroke: "#bcaaa4" }, // Alias for storage
   balcony: { fill: "#e8f5e9", stroke: "#a5d6a7" },
   corridor: { fill: "#fce4ec", stroke: "#f48fb1" },
+  hall: { fill: "#fce4ec", stroke: "#f48fb1" }, // Alias for corridor
   other: { fill: "#f5f5f5", stroke: "#bdbdbd" },
 };
 

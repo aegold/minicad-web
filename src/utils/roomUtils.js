@@ -57,7 +57,16 @@ export const getRoomCenter = (room, vertices) => {
     return [0, 0];
   }
 
-  return getPolygonCenter(polygon);
+  const center = getPolygonCenter(polygon);
+
+  // Get bounding box to calculate offset
+  const bounds = getBoundingBox(polygon);
+  const width = bounds.maxX - bounds.minX;
+
+  // Offset center 10% to the right
+  const offsetX = width * 0.1;
+
+  return [center[0] + offsetX, center[1]];
 };
 
 /**

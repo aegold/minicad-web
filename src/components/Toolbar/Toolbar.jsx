@@ -3,7 +3,7 @@
  * Collapsible vertical toolbar with tool buttons
  */
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import useEditorStore from "../../store/editorStore";
 import { TOOLS } from "../../utils/constants";
 import "./Toolbar.css";
@@ -11,6 +11,8 @@ import "./Toolbar.css";
 const Toolbar = () => {
   const currentTool = useEditorStore((state) => state.currentTool);
   const setTool = useEditorStore((state) => state.setTool);
+  const startPlacement = useEditorStore((state) => state.startPlacement);
+  const placementMode = useEditorStore((state) => state.placementMode);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isObjectMenuOpen, setIsObjectMenuOpen] = useState(false);
 
@@ -46,11 +48,17 @@ const Toolbar = () => {
   ];
 
   const objectTypes = [
-    { id: "door", name: "Door", icon: "🚪" },
-    { id: "window", name: "Window", icon: "🪟" },
-    { id: "stairs", name: "Stairs", icon: "🪜" },
-    { id: "furniture", name: "Furniture", icon: "🪑" },
+    { id: "door", name: "Door", icon: "🚪", symbolId: "door.single" },
+    { id: "window", name: "Window", icon: "🪟", symbolId: "window.slider" },
+    { id: "stairs", name: "Stairs", icon: "🪜", symbolId: "stair.straight" },
   ];
+
+  // Auto-open menu when in placement mode
+  useEffect(() => {
+    if (placementMode) {
+      setIsObjectMenuOpen(true);
+    }
+  }, [placementMode]);
 
   return (
     <div className={`toolbar ${isCollapsed ? "collapsed" : ""}`}>
@@ -104,10 +112,12 @@ const Toolbar = () => {
                 {objectTypes.map((obj) => (
                   <button
                     key={obj.id}
-                    className="toolbar-object-btn"
+                    className={`toolbar-object-btn ${
+                      placementMode?.objectType === obj.id ? "active" : ""
+                    }`}
                     onClick={() => {
-                      // TODO: Implement add object functionality
-                      console.log(`Add ${obj.name}`);
+                      startPlacement(obj.symbolId, obj.id);
+                      console.log(`Placement mode: ${obj.name}`);
                     }}
                     title={`Add ${obj.name}`}
                   >

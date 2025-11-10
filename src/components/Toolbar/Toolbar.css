@@ -229,6 +229,13 @@
   border-color: #e0e0e0;
 }
 
+.toolbar-object-btn.active {
+  background: #1565c0;
+  color: #ffffff;
+  border-color: #1565c0;
+  font-weight: 500;
+}
+
 .toolbar-object-icon {
   font-size: 16px;
   width: 18px;

@@ -10,12 +10,19 @@ import WallLayer from "./WallLayer";
 import RoomLayer from "./RoomLayer";
 import InstanceLayer from "./InstanceLayer";
 import HandlesLayer from "./HandlesLayer";
+import PlacementPreviewLayer from "./PlacementPreviewLayer";
+import DrawWallLayer from "./DrawWallLayer";
+import DrawRoomLayer from "./DrawRoomLayer";
 import useEditorStore from "../../store/editorStore";
 import useTransform from "../../hooks/useTransform";
 import { CANVAS_BACKGROUND, ZOOM_SPEED, TOOLS } from "../../utils/constants";
 import { calculateFloorPlanBounds } from "../../utils/floorPlanUtils";
 import { findHitObject } from "../../utils/hitTest";
 import DeleteCommand from "../../commands/DeleteCommand";
+import AddInstanceCommand from "../../commands/AddInstanceCommand";
+import { AddWallCommand } from "../../commands/AddWallCommand";
+import { AddRoomCommand } from "../../commands/AddRoomCommand";
+import { calculateArea } from "../../utils/geometry";
 import "./KonvaCanvas.css";
 
 const KonvaCanvas = () => {
@@ -36,6 +43,7 @@ const KonvaCanvas = () => {
   const walls = useEditorStore((state) => state.walls);
   const rooms = useEditorStore((state) => state.rooms);
   const instances = useEditorStore((state) => state.instances);
+  const symbols = useEditorStore((state) => state.symbols);
   const selectItem = useEditorStore((state) => state.selectItem);
   const clearSelection = useEditorStore((state) => state.clearSelection);
   const setHovered = useEditorStore((state) => state.setHovered);
@@ -47,6 +55,16 @@ const KonvaCanvas = () => {
   const executeCommand = useEditorStore((state) => state.executeCommand);
   const selectedIds = useEditorStore((state) => state.selectedIds);
   const selectedType = useEditorStore((state) => state.selectedType);
+  const placementMode = useEditorStore((state) => state.placementMode);
+  const updatePlacementPreview = useEditorStore(
+    (state) => state.updatePlacementPreview
+  );
+  const cancelPlacement = useEditorStore((state) => state.cancelPlacement);
+  const addTempPoint = useEditorStore((state) => state.addTempPoint);
+  const clearTempPoints = useEditorStore((state) => state.clearTempPoints);
+  const finishDrawing = useEditorStore((state) => state.finishDrawing);
+  const tempPoints = useEditorStore((state) => state.tempPoints);
+  const isDrawing = useEditorStore((state) => state.isDrawing);
 
   // Handle canvas resize
   useEffect(() => {
@@ -136,10 +154,117 @@ const KonvaCanvas = () => {
         return;
       }
 
-      // Escape: Clear selection
+      // Escape: Clear selection or cancel placement or cancel drawing
       if (e.key === "Escape") {
         e.preventDefault();
-        clearSelection();
+        if (isDrawing) {
+          clearTempPoints();
+        } else if (placementMode) {
+          cancelPlacement();
+        } else {
+          clearSelection();
+        }
+        return;
+      }
+
+      // Enter or Space: Finish drawing walls or rooms
+      if (e.key === "Enter" || e.key === " ") {
+        if (isDrawing && tempPoints.length >= 2) {
+          e.preventDefault();
+
+          // Handle DRAW_ROOM mode
+          if (currentTool === TOOLS.DRAW_ROOM && tempPoints.length >= 3) {
+            const points = tempPoints;
+
+            // Generate unique IDs
+            const vertexCount = Object.keys(vertices).length;
+            const roomCount = Object.keys(rooms).length;
+
+            // Create vertex IDs and data
+            const vertexIds = [];
+            const vertexData = [];
+
+            for (let i = 0; i < points.length; i++) {
+              const vId = `v${vertexCount + i + 1}`;
+              vertexIds.push(vId);
+              vertexData.push({
+                x: Math.round(points[i][0]),
+                y: Math.round(points[i][1]),
+              });
+            }
+
+            // Calculate area
+            const polygon = points.map((p) => [p[0], p[1]]);
+            const area = calculateArea(polygon);
+
+            // Create room data
+            const roomId = `r${roomCount + 1}`;
+            const roomData = {
+              name: `Room ${roomCount + 1}`,
+              vertices: vertexIds,
+              type: "other",
+              area: area,
+            };
+
+            const command = new AddRoomCommand(
+              roomId,
+              vertexIds,
+              vertexData,
+              roomData
+            );
+            executeCommand(command);
+
+            console.log(`Created room with ${points.length} vertices`);
+            finishDrawing();
+            return;
+          }
+
+          // Handle DRAW_WALL mode
+          if (currentTool === TOOLS.DRAW_WALL) {
+            // Create walls from temp points
+            const points = tempPoints;
+
+            // Generate unique IDs
+            const vertexCount = Object.keys(vertices).length;
+            const wallCount = Object.keys(walls).length;
+
+            // Create vertices and walls
+            for (let i = 0; i < points.length - 1; i++) {
+              const v1Id = `v${vertexCount + i + 1}`;
+              const v2Id = `v${vertexCount + i + 2}`;
+              const wallId = `w${wallCount + i + 1}`;
+
+              const v1Data = {
+                x: Math.round(points[i][0]),
+                y: Math.round(points[i][1]),
+              };
+              const v2Data = {
+                x: Math.round(points[i + 1][0]),
+                y: Math.round(points[i + 1][1]),
+              };
+
+              const wallData = {
+                vStart: v1Id,
+                vEnd: v2Id,
+                thickness: 200,
+                isOuter: false,
+              };
+
+              const command = new AddWallCommand(
+                wallId,
+                v1Id,
+                v2Id,
+                v1Data,
+                v2Data,
+                wallData
+              );
+              executeCommand(command);
+            }
+
+            console.log(`Created ${points.length - 1} walls`);
+            finishDrawing();
+          }
+        }
         return;
       }
 
@@ -223,6 +348,13 @@ const KonvaCanvas = () => {
     walls,
     instances,
     vertices,
+    isDrawing,
+    tempPoints,
+    clearTempPoints,
+    finishDrawing,
+    cancelPlacement,
+    placementMode,
+    currentTool,
   ]);
 
   // Handle wheel zoom
@@ -259,12 +391,156 @@ const KonvaCanvas = () => {
       return;
     }
 
-    // Left click: selection
+    // Left click
     if (e.evt.button === 0) {
+      // Handle PAN tool - start panning with left click
+      if (currentTool === TOOLS.PAN) {
+        setIsPanning(true);
+        setPanStart({ x: pointer.x, y: pointer.y });
+        setCursor("grabbing");
+        return;
+      }
+
       // Convert screen → world coordinates
       const worldPoint = screenToWorld([pointer.x, pointer.y]);
 
-      // Find what was clicked
+      // Handle DRAW_ROOM mode
+      if (currentTool === TOOLS.DRAW_ROOM) {
+        // Add point to temp drawing
+        addTempPoint(worldPoint);
+
+        const currentPoints = [...tempPoints, worldPoint];
+
+        console.log(
+          `Added point at [${worldPoint[0].toFixed(0)}, ${worldPoint[1].toFixed(
+            0
+          )}]`
+        );
+        console.log(`Total points: ${currentPoints.length}`);
+
+        return;
+      }
+
+      // Handle DRAW_WALL mode
+      if (currentTool === TOOLS.DRAW_WALL) {
+        // Add point to temp drawing
+        addTempPoint(worldPoint);
+
+        // If we have at least 2 points, we can create walls
+        const currentPoints = [...tempPoints, worldPoint];
+
+        console.log(
+          `Added point at [${worldPoint[0].toFixed(0)}, ${worldPoint[1].toFixed(
+            0
+          )}]`
+        );
+        console.log(`Total points: ${currentPoints.length}`);
+
+        return;
+      }
+
+      // If in placement mode, place instance
+      if (placementMode) {
+        const symbol = symbols[placementMode.symbolId];
+
+        // Check if symbol is anchored (wall) or free
+        if (symbol?.type === "anchored") {
+          // Wall-anchored placement (door, window)
+          const hit = findHitObject(worldPoint, useEditorStore.getState());
+
+          if (hit && hit.type === "wall") {
+            // Calculate offset along wall
+            const wall = walls[hit.id];
+            const v1 = vertices[wall.vStart];
+            const v2 = vertices[wall.vEnd];
+
+            if (v1 && v2) {
+              const wallVecX = v2.x - v1.x;
+              const wallVecY = v2.y - v1.y;
+              const wallLength = Math.sqrt(
+                wallVecX * wallVecX + wallVecY * wallVecY
+              );
+
+              const toCursorX = worldPoint[0] - v1.x;
+              const toCursorY = worldPoint[1] - v1.y;
+
+              const projection =
+                (toCursorX * wallVecX + toCursorY * wallVecY) /
+                (wallLength * wallLength);
+              const clampedProjection = Math.max(0, Math.min(1, projection));
+
+              const offsetFromStart = clampedProjection * wallLength;
+
+              // Generate unique instance ID
+              const instanceCount = Object.keys(instances).length;
+              const instanceId = `${placementMode.objectType}${
+                instanceCount + 1
+              }`;
+
+              const defaultWidth = symbol?.geometry?.width || 900;
+
+              // Create instance data
+              const instanceData = {
+                symbol: placementMode.symbolId,
+                constraint: {
+                  attachTo: {
+                    kind: "wall",
+                    id: hit.id,
+                  },
+                  offsetFromStart: offsetFromStart,
+                },
+                transform: null,
+                props: {
+                  width: defaultWidth,
+                  label: instanceId.toUpperCase(),
+                },
+              };
+
+              // Execute command
+              const command = new AddInstanceCommand(instanceId, instanceData);
+              executeCommand(command);
+
+              // Exit placement mode
+              cancelPlacement();
+
+              console.log(
+                `Placed ${placementMode.objectType} at wall ${hit.id}`
+              );
+            }
+          }
+        } else {
+          // Free placement (stairs, furniture)
+          const instanceCount = Object.keys(instances).length;
+          const instanceId = `${placementMode.objectType}${instanceCount + 1}`;
+
+          // Create instance data with transform
+          const instanceData = {
+            symbol: placementMode.symbolId,
+            constraint: null,
+            transform: {
+              position: [worldPoint[0], worldPoint[1]],
+              rotation: 0,
+            },
+            props: {
+              label: instanceId.toUpperCase(),
+            },
+          };
+
+          // Execute command
+          const command = new AddInstanceCommand(instanceId, instanceData);
+          executeCommand(command);
+
+          // Exit placement mode
+          cancelPlacement();
+
+          console.log(
+            `Placed ${placementMode.objectType} at [${worldPoint[0]}, ${worldPoint[1]}]`
+          );
+        }
+        return;
+      }
+
+      // Normal selection
       const hit = findHitObject(worldPoint, useEditorStore.getState());
 
       if (hit) {
@@ -293,6 +569,55 @@ const KonvaCanvas = () => {
 
     // Skip hover detection if hovering over draggable element
     if (e.target.draggable && e.target.draggable()) {
+      return;
+    }
+
+    // Convert screen → world coordinates
+    const worldPoint = screenToWorld([pointer.x, pointer.y]);
+
+    // If in placement mode, update preview
+    if (placementMode) {
+      const symbol = symbols[placementMode.symbolId];
+
+      if (symbol?.type === "anchored") {
+        // Wall-anchored preview (door, window)
+        const hit = findHitObject(worldPoint, useEditorStore.getState());
+
+        if (hit && hit.type === "wall") {
+          // Calculate offset along wall
+          const wall = walls[hit.id];
+          const v1 = vertices[wall.vStart];
+          const v2 = vertices[wall.vEnd];
+
+          if (v1 && v2) {
+            const wallVecX = v2.x - v1.x;
+            const wallVecY = v2.y - v1.y;
+            const wallLength = Math.sqrt(
+              wallVecX * wallVecX + wallVecY * wallVecY
+            );
+
+            const toCursorX = worldPoint[0] - v1.x;
+            const toCursorY = worldPoint[1] - v1.y;
+
+            const projection =
+              (toCursorX * wallVecX + toCursorY * wallVecY) /
+              (wallLength * wallLength);
+            const clampedProjection = Math.max(0, Math.min(1, projection));
+
+            const offsetFromStart = clampedProjection * wallLength;
+
+            updatePlacementPreview(hit.id, offsetFromStart);
+            setCursor("crosshair");
+          }
+        } else {
+          updatePlacementPreview(null, 0);
+          setCursor("not-allowed");
+        }
+      } else {
+        // Free placement preview (stairs) - always show at cursor
+        updatePlacementPreview(null, 0, worldPoint);
+        setCursor("crosshair");
+      }
       return;
     }
 
@@ -333,9 +658,16 @@ const KonvaCanvas = () => {
 
   // Handle mouse up
   const handleMouseUp = (e) => {
+    // Stop panning on right-click release
     if (e.evt.button === 2 && isPanning) {
       setIsPanning(false);
       setCursor("default");
+    }
+
+    // Stop panning on left-click release when using Pan tool
+    if (e.evt.button === 0 && isPanning && currentTool === TOOLS.PAN) {
+      setIsPanning(false);
+      setCursor("grab");
     }
   };
 
@@ -344,7 +676,12 @@ const KonvaCanvas = () => {
     clearHovered();
     if (isPanning) {
       setIsPanning(false);
-      setCursor("default");
+      // Reset cursor based on current tool
+      if (currentTool === TOOLS.PAN) {
+        setCursor("grab");
+      } else {
+        setCursor("default");
+      }
     }
   };
 
@@ -402,12 +739,35 @@ const KonvaCanvas = () => {
 
         {/* Handles layer (vertex circles for editing) */}
         <HandlesLayer viewport={viewport} />
+
+        {/* Draw wall layer (temporary lines while drawing) */}
+        <DrawWallLayer viewport={viewport} />
+
+        {/* Draw room layer (temporary polygon while drawing) */}
+        <DrawRoomLayer viewport={viewport} />
+
+        {/* Placement preview layer */}
+        <PlacementPreviewLayer viewport={viewport} />
       </Stage>
 
       {/* Canvas info overlay */}
       <div className="canvas-info">
         <div>Zoom: {getZoomPercentage()}%</div>
         <div>Tool: {currentTool}</div>
+        {isDrawing && currentTool === TOOLS.DRAW_WALL && (
+          <div style={{ color: "#4CAF50", fontWeight: "bold" }}>
+            Drawing wall... Points: {tempPoints.length}
+            <br />
+            Press Enter/Space to finish, Esc to cancel
+          </div>
+        )}
+        {isDrawing && currentTool === TOOLS.DRAW_ROOM && (
+          <div style={{ color: "#4CAF50", fontWeight: "bold" }}>
+            Drawing room... Points: {tempPoints.length}
+            <br />
+            Press Enter/Space to finish (min 3 points), Esc to cancel
+          </div>
+        )}
       </div>
 
       {/* Canvas controls */}

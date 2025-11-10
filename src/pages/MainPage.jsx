@@ -3,7 +3,7 @@ import KonvaCanvas from "../components/Canvas/KonvaCanvas";
 import PropertiesPanel from "../components/Panels/PropertiesPanel";
 import Toolbar from "../components/Toolbar/Toolbar";
 import useEditorStore from "../store/editorStore";
-import { sampleFloorPlan } from "../utils/sampleData";
+import { sampleFloorPlan3 } from "../utils/sampleData3";
 import "./MainPage.css";
 
 function MainPage() {
@@ -14,8 +14,8 @@ function MainPage() {
 
   // Load sample data on mount
   useEffect(() => {
-    console.log("Loading sample data...", sampleFloorPlan);
-    loadJSON(sampleFloorPlan);
+    console.log("Loading sample data...", sampleFloorPlan3);
+    loadJSON(sampleFloorPlan3);
   }, [loadJSON]);
 
   // Debug: log data after load

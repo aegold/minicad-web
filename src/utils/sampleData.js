@@ -97,6 +97,19 @@ export const sampleFloorPlan = {
         strokeWidth: 2,
       },
     },
+    "furniture.table": {
+      type: "free",
+      geometry: {
+        width: 1200,
+        depth: 800,
+      },
+      render: {
+        type: "rect",
+        stroke: "#8b4513",
+        strokeWidth: 2,
+        fill: "rgba(139, 69, 19, 0.1)",
+      },
+    },
   },
 
   // Instances (actual doors, windows, stairs)

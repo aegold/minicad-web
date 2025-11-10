@@ -25,6 +25,10 @@ const useEditorStore = create((set, get) => ({
   hoveredId: null,
   hoveredType: null,
 
+  // Placement mode for adding new instances
+  placementMode: null, // null or { symbolId: "door.single", objectType: "door" }
+  placementPreview: null, // { wallId, offset, freePosition } for preview during placement
+
   // ==================== VIEW STATE ====================
   viewport: {
     x: 0,
@@ -272,6 +276,66 @@ const useEditorStore = create((set, get) => ({
     }));
   },
 
+  /**
+   * Enter placement mode for adding objects
+   */
+  startPlacement: (symbolId, objectType) => {
+    set({
+      placementMode: { symbolId, objectType },
+      placementPreview: null,
+      currentTool: TOOLS.SELECT, // Keep select tool active
+    });
+  },
+
+  /**
+   * Update placement preview position
+   */
+  updatePlacementPreview: (wallId, offset, freePosition) => {
+    set({
+      placementPreview: { wallId, offset, freePosition },
+    });
+  },
+
+  /**
+   * Cancel placement mode
+   */
+  cancelPlacement: () => {
+    set({
+      placementMode: null,
+      placementPreview: null,
+    });
+  },
+
+  /**
+   * Add point to temp drawing
+   */
+  addTempPoint: (point) => {
+    set((state) => ({
+      tempPoints: [...state.tempPoints, point],
+      isDrawing: true,
+    }));
+  },
+
+  /**
+   * Clear temp drawing points
+   */
+  clearTempPoints: () => {
+    set({
+      tempPoints: [],
+      isDrawing: false,
+    });
+  },
+
+  /**
+   * Finish drawing (used for walls/rooms)
+   */
+  finishDrawing: () => {
+    set({
+      tempPoints: [],
+      isDrawing: false,
+    });
+  },
+
   // ==================== CRUD OPERATIONS (NEW FORMAT) ====================
   // TODO: Will add vertex/wall/room/opening/label operations here
 
@@ -291,6 +355,8 @@ const useEditorStore = create((set, get) => ({
       currentTool: TOOLS.SELECT,
       hoveredId: null,
       hoveredType: null,
+      placementMode: null,
+      placementPreview: null,
       viewport: { x: 0, y: 0, scale: INITIAL_ZOOM },
       gridVisible: true,
       commandHistory: [],

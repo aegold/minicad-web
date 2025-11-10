@@ -30,6 +30,7 @@ export const SELECTION_COLOR = "#74c0fc";
 export const SELECTION_STROKE_WIDTH = 2;
 export const VERTEX_HANDLE_RADIUS = 6;
 export const VERTEX_HANDLE_COLOR = "#228be6";
+export const VERTEX_COLOR = "#228be6"; // Color for vertices/points
 
 // Snap indicator
 export const SNAP_INDICATOR_RADIUS = 8;

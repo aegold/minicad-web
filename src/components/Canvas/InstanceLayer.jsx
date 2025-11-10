@@ -131,6 +131,91 @@ const WindowRenderer = ({
 };
 
 /**
+ * Render a single stairs instance
+ */
+const StairsRenderer = ({
+  instance,
+  symbol,
+  position,
+  rotation,
+  scale,
+  isSelected,
+  isHovered,
+}) => {
+  const run = (symbol.geometry?.run || 3000) * scale;
+  const width = (symbol.geometry?.width || 1000) * scale;
+  const steps = symbol.geometry?.steps || 10;
+
+  const stroke = isSelected ? "#1565c0" : isHovered ? "#64b5f6" : "#666666";
+  const strokeWidth = isSelected ? 3 : isHovered ? 2.5 : 2;
+
+  return (
+    <Group
+      x={position[0]}
+      y={position[1]}
+      rotation={(rotation * 180) / Math.PI}
+    >
+      {/* Stairs outline */}
+      <Rect
+        x={-width / 2}
+        y={0}
+        width={width}
+        height={run}
+        fill="rgba(128, 128, 128, 0.1)"
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+      />
+
+      {/* Step lines */}
+      {Array.from({ length: steps - 1 }).map((_, i) => {
+        const stepY = ((i + 1) * run) / steps;
+        return (
+          <Line
+            key={i}
+            points={[-width / 2, stepY, width / 2, stepY]}
+            stroke={stroke}
+            strokeWidth={Math.max(strokeWidth * 0.5, 1)}
+          />
+        );
+      })}
+
+      {/* Direction arrow */}
+      <Line
+        points={[0, run * 0.2, 0, run * 0.8]}
+        stroke={stroke}
+        strokeWidth={Math.max(strokeWidth, 2)}
+      />
+      <Line
+        points={[
+          -width * 0.15,
+          run * 0.7,
+          0,
+          run * 0.8,
+          width * 0.15,
+          run * 0.7,
+        ]}
+        stroke={stroke}
+        strokeWidth={Math.max(strokeWidth, 2)}
+        closed={false}
+      />
+
+      {/* Label */}
+      {instance.props?.label && scale > 0.3 && (
+        <Text
+          text={instance.props.label}
+          x={0}
+          y={-25 * scale}
+          fontSize={Math.max(10, 12 * scale)}
+          fill="#000"
+          align="center"
+          offsetX={20}
+        />
+      )}
+    </Group>
+  );
+};
+
+/**
  * Default renderer for unknown types
  */
 const DefaultRenderer = ({ position, scale }) => {
@@ -155,6 +240,7 @@ const DefaultRenderer = ({ position, scale }) => {
 const getRenderer = (symbolId) => {
   if (symbolId.startsWith("door.")) return DoorRenderer;
   if (symbolId.startsWith("window.")) return WindowRenderer;
+  if (symbolId.startsWith("stair.")) return StairsRenderer;
   return DefaultRenderer;
 };
 
